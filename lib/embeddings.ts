@@ -1,24 +1,14 @@
 /**
- * Serverless-compatible embedding utility using the Hugging Face OpenAI-compatible Router API.
+ * Serverless-compatible embedding utility using the Hugging Face Router Inference API.
  *
- * Endpoint: https://router.huggingface.co/v1/embeddings
+ * Endpoint: https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2
  * Model: sentence-transformers/all-MiniLM-L6-v2
  *   - 384-dimensional output (matches vector(384) in DB schema)
- *   - High availability router endpoint (resolves via router.huggingface.co)
+ *   - Fast API call, no local model files, zero native dependencies
  *   - Uses HF_TOKEN from environment variables
  */
 
-const HF_ROUTER_URL = 'https://router.huggingface.co/v1/embeddings'
-const EMBEDDING_MODEL = 'sentence-transformers/all-MiniLM-L6-v2'
-
-interface EmbeddingItem {
-  embedding: number[]
-  index: number
-}
-
-interface OpenAIEmbeddingResponse {
-  data: EmbeddingItem[]
-}
+const HF_API_URL = 'https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2'
 
 /**
  * Generate a 384-dim embedding for a single text string.
@@ -29,16 +19,13 @@ export async function embedText(text: string): Promise<number[]> {
     throw new Error('HF_TOKEN environment variable is required for embeddings')
   }
 
-  const response = await fetch(HF_ROUTER_URL, {
+  const response = await fetch(HF_API_URL, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      model: EMBEDDING_MODEL,
-      input: text.trim(),
-    }),
+    body: JSON.stringify({ inputs: text.trim() }),
   })
 
   if (!response.ok) {
@@ -46,15 +33,16 @@ export async function embedText(text: string): Promise<number[]> {
     throw new Error(`Hugging Face embedding error (${response.status}): ${errText}`)
   }
 
-  const result = (await response.json()) as OpenAIEmbeddingResponse
-  if (result.data && result.data[0]?.embedding) {
-    return result.data[0].embedding
+  const result = await response.json()
+  // HF returns an array of numbers for a single text input
+  if (Array.isArray(result)) {
+    return result as number[]
   }
   throw new Error('Unexpected embedding response format from Hugging Face Router')
 }
 
 /**
- * Embed multiple texts in batch using the Hugging Face Router API.
+ * Embed multiple texts in batch using the Hugging Face Router Inference API.
  */
 export async function embedBatch(texts: string[]): Promise<number[][]> {
   if (texts.length === 0) return []
@@ -64,16 +52,14 @@ export async function embedBatch(texts: string[]): Promise<number[][]> {
     throw new Error('HF_TOKEN environment variable is required for embeddings')
   }
 
-  const response = await fetch(HF_ROUTER_URL, {
+  // Hugging Face supports batch input: {"inputs": ["text1", "text2"]}
+  const response = await fetch(HF_API_URL, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      model: EMBEDDING_MODEL,
-      input: texts.map((t) => t.trim()),
-    }),
+    body: JSON.stringify({ inputs: texts.map((t) => t.trim()) }),
   })
 
   if (!response.ok) {
@@ -81,12 +67,10 @@ export async function embedBatch(texts: string[]): Promise<number[][]> {
     throw new Error(`Hugging Face batch embedding error (${response.status}): ${errText}`)
   }
 
-  const result = (await response.json()) as OpenAIEmbeddingResponse
-  if (result.data && Array.isArray(result.data)) {
-    // Sort by index to maintain original order
-    return result.data
-      .sort((a, b) => a.index - b.index)
-      .map((item) => item.embedding)
+  const result = await response.json()
+  // HF returns a 2D array of numbers for batch inputs
+  if (Array.isArray(result) && Array.isArray(result[0])) {
+    return result as number[][]
   }
   throw new Error('Unexpected batch embedding response format from Hugging Face Router')
 }
