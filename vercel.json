@@ -1,7 +1,4 @@
 {
-  "framework": {
-    "name": "next.js"
-  },
   "functions": {
     "app/api/upload/route": {
       "maxDuration": 60
