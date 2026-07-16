@@ -2,13 +2,12 @@
  * Text extraction and chunking utilities.
  *
  * Supports:
- *  - PDF  → pdf-parse v2 (PDFParse class)
- *  - JPG/PNG → Groq llama-3.2-11b-vision OCR (no extra package needed)
+ *  - PDF  → unpdf (Serverless-safe pure JS parser)
+ *  - JPG/PNG → Groq llama-3.2-11b-vision OCR
  *
  * Chunking: ~500 tokens (~2000 chars) per chunk, ~50 token (~200 char) overlap.
  */
 
-import { PDFParse } from 'pdf-parse'
 import Groq from 'groq-sdk'
 
 export interface TextChunk {
@@ -20,15 +19,20 @@ export interface TextChunk {
 const CHUNK_CHARS = 2000
 const OVERLAP_CHARS = 200
 
-// ─── PDF Extraction ──────────────────────────────────────────
+// ─── PDF Extraction (unpdf) ──────────────────────────────────
 
 /**
- * Extract raw text from a PDF Buffer using pdf-parse v2.
+ * Extract raw text from a PDF Buffer using unpdf (pure JS, Vercel-compatible).
  */
 export async function extractPdfText(buffer: Buffer): Promise<string> {
-  const parser = new PDFParse({ data: buffer })
-  const result = await parser.getText()
-  return result.text
+  const { getDocumentProxy, extractText } = await import('unpdf')
+  
+  // Load the document using the Uint8Array buffer data
+  const pdf = await getDocumentProxy(new Uint8Array(buffer))
+  // Pass mergePages: true to get the entire text as a single string
+  const { text } = await extractText(pdf, { mergePages: true })
+  
+  return text || ''
 }
 
 // ─── Image OCR via Groq Vision ───────────────────────────────
@@ -45,9 +49,6 @@ function getGroqClient(): Groq {
 /**
  * Extract all text from a JPG/PNG medical report image using
  * Groq's llama-3.2-11b-vision model.
- *
- * @param buffer  - Raw image bytes
- * @param mimeType - 'image/jpeg' | 'image/png' | 'image/webp'
  */
 export async function extractImageText(
   buffer: Buffer,
@@ -57,7 +58,7 @@ export async function extractImageText(
   const dataUrl = `data:${mimeType};base64,${base64}`
 
   const response = await getGroqClient().chat.completions.create({
-    model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+    model: 'meta-llama/llama-3.2-11b-vision-preview',
     messages: [
       {
         role: 'user',
