@@ -1,47 +1,75 @@
 /**
- * Local embedding utility using @xenova/transformers.
+ * Serverless-compatible embedding utility using the Hugging Face Inference API.
  *
- * Model: Xenova/all-MiniLM-L6-v2
+ * Model: sentence-transformers/all-MiniLM-L6-v2
  *   - 384-dimensional output (matches vector(384) in DB schema)
- *   - ~20MB download, cached after first use
- *   - No API key required
+ *   - Fast API call, no local model files, zero native dependencies
+ *   - Uses HF_TOKEN from environment variables
  */
 
-import type { FeatureExtractionPipeline } from '@xenova/transformers'
-
-// Singleton pipeline — loaded once per process, reused across requests
-let _pipeline: FeatureExtractionPipeline | null = null
-
-async function getPipeline(): Promise<FeatureExtractionPipeline> {
-  if (!_pipeline) {
-    const { pipeline } = await import('@xenova/transformers')
-    _pipeline = await pipeline(
-      'feature-extraction',
-      'Xenova/all-MiniLM-L6-v2'
-    ) as FeatureExtractionPipeline
-  }
-  return _pipeline
-}
+const HF_API_URL = 'https://api-inference.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2'
 
 /**
  * Generate a 384-dim embedding for a single text string.
  */
 export async function embedText(text: string): Promise<number[]> {
-  const pipe = await getPipeline()
-  const output = await pipe(text.trim(), { pooling: 'mean', normalize: true })
-  return Array.from(output.data) as number[]
+  const token = process.env.HF_TOKEN
+  if (!token) {
+    throw new Error('HF_TOKEN environment variable is required for embeddings')
+  }
+
+  const response = await fetch(HF_API_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ inputs: text.trim() }),
+  })
+
+  if (!response.ok) {
+    const errText = await response.text()
+    throw new Error(`Hugging Face embedding error (${response.status}): ${errText}`)
+  }
+
+  const result = await response.json()
+  // HF returns an array of numbers for a single text input
+  if (Array.isArray(result)) {
+    return result as number[]
+  }
+  throw new Error('Unexpected embedding response format from Hugging Face')
 }
 
 /**
- * Embed multiple texts using the local model (no batching limit).
+ * Embed multiple texts using the Hugging Face API.
  */
 export async function embedBatch(texts: string[]): Promise<number[][]> {
   if (texts.length === 0) return []
-  const pipe = await getPipeline()
-  const results: number[][] = []
-  for (const text of texts) {
-    const output = await pipe(text.trim(), { pooling: 'mean', normalize: true })
-    results.push(Array.from(output.data) as number[])
+
+  const token = process.env.HF_TOKEN
+  if (!token) {
+    throw new Error('HF_TOKEN environment variable is required for embeddings')
   }
-  return results
+
+  // Hugging Face supports batch input: {"inputs": ["text1", "text2"]}
+  const response = await fetch(HF_API_URL, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ inputs: texts.map((t) => t.trim()) }),
+  })
+
+  if (!response.ok) {
+    const errText = await response.text()
+    throw new Error(`Hugging Face batch embedding error (${response.status}): ${errText}`)
+  }
+
+  const result = await response.json()
+  // HF returns a 2D array of numbers for batch inputs
+  if (Array.isArray(result) && Array.isArray(result[0])) {
+    return result as number[][]
+  }
+  throw new Error('Unexpected batch embedding response format from Hugging Face')
 }

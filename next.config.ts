@@ -2,7 +2,7 @@ import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
   // These packages use Node.js native features — opt out of bundling
-  serverExternalPackages: ['@xenova/transformers', 'sharp', 'onnxruntime-node'],
+  serverExternalPackages: ['sharp'],
 
   // Allow Supabase storage image domains
   images: {
