@@ -91,3 +91,28 @@ as $$
   order by dc.embedding <=> query_embedding
   limit match_count;
 $$;
+
+-- ============================================================
+-- Storage configuration & RLS Policies
+-- ============================================================
+
+-- Ensure the medical-reports bucket exists and is public
+insert into storage.buckets (id, name, public)
+values ('medical-reports', 'medical-reports', true)
+on conflict (id) do update set public = true;
+
+-- Drop existing policies if they exist to avoid duplication
+drop policy if exists "Allow anonymous uploads" on storage.objects;
+drop policy if exists "Allow anonymous reads" on storage.objects;
+
+-- Allow anonymous inserts to the medical-reports bucket (required when service role is not set)
+create policy "Allow anonymous uploads"
+on storage.objects for insert
+to public
+with check (bucket_id = 'medical-reports');
+
+-- Allow anonymous selects from the medical-reports bucket
+create policy "Allow anonymous reads"
+on storage.objects for select
+to public
+using (bucket_id = 'medical-reports');
