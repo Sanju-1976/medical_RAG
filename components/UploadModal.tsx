@@ -4,6 +4,7 @@ import { useState, useRef } from 'react'
 import { X, Upload, FileText, Image, AlertCircle, CheckCircle, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
+import { createBrowserClient } from '@/lib/supabase/client'
 
 interface UploadModalProps {
   isOpen: boolean
@@ -13,7 +14,6 @@ interface UploadModalProps {
 type UploadState = 'idle' | 'uploading' | 'embedding' | 'success' | 'error'
 
 const ACCEPTED_MIME = 'application/pdf,image/jpeg,image/jpg,image/png,image/webp'
-const ACCEPTED_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png', '.webp']
 
 function isAccepted(file: File): boolean {
   return (
@@ -29,6 +29,7 @@ function fileIcon(file: File) {
 
 export function UploadModal({ isOpen, onClose }: UploadModalProps) {
   const router = useRouter()
+  const supabase = createBrowserClient()
   const [dragOver, setDragOver] = useState(false)
   const [file, setFile] = useState<File | null>(null)
   const [uploadState, setUploadState] = useState<UploadState>('idle')
@@ -61,11 +62,24 @@ export function UploadModal({ isOpen, onClose }: UploadModalProps) {
     setProgress(20)
 
     try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        setErrorMsg('Please log in again to upload.')
+        setUploadState('error')
+        return
+      }
+
       const formData = new FormData()
       formData.append('file', file)
 
       setProgress(40)
-      const res = await fetch('/api/upload', { method: 'POST', body: formData })
+      const res = await fetch('/api/upload', { 
+        method: 'POST', 
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: formData 
+      })
 
       // For images, OCR takes a moment — show the embedding state earlier
       setProgress(70)

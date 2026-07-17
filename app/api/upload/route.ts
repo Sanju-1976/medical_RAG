@@ -3,6 +3,7 @@ import { createServerClient } from '@/lib/supabase/server'
 import { extractPdfText, extractImageText, chunkText } from '@/lib/pdf'
 import { embedBatch } from '@/lib/embeddings'
 import { extractReportMetadata } from '@/lib/gemini'
+import { getAuthUser } from '@/lib/auth'
 
 export const maxDuration = 60
 
@@ -19,6 +20,12 @@ type AcceptedMime = keyof typeof ACCEPTED_TYPES
 
 export async function POST(request: NextRequest) {
   try {
+    // Authenticate the user
+    const user = await getAuthUser(request)
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const formData = await request.formData()
     const file = formData.get('file') as File | null
 
@@ -47,7 +54,7 @@ export async function POST(request: NextRequest) {
     const fileType = ACCEPTED_TYPES[mimeType]
 
     // 1. Upload to Supabase Storage
-    const storagePath = `reports/${Date.now()}_${fileName}`
+    const storagePath = `reports/${user.id}/${Date.now()}_${fileName}`
     const { error: storageError } = await supabase.storage
       .from('medical-reports')
       .upload(storagePath, buffer, { contentType: mimeType, upsert: false })
@@ -57,13 +64,14 @@ export async function POST(request: NextRequest) {
       // Non-fatal — continue with embedding
     }
 
-    // 2. Create document record
+    // 2. Create document record scoped to current user
     const { data: doc, error: docError } = await supabase
       .from('documents')
       .insert({
         name: file.name,
         file_path: storagePath,
         file_size: file.size,
+        user_id: user.id,
       })
       .select()
       .single()
@@ -95,7 +103,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 3.5 Extract metadata (lab name, report date, biomarkers, risk assessment) from rawText using Groq
+    // 3.5 Extract metadata from rawText using Groq
     const reportMetadata = await extractReportMetadata(rawText)
     
     // Update the document row with the extracted metadata
@@ -104,7 +112,7 @@ export async function POST(request: NextRequest) {
       .update({
         lab_name: reportMetadata.lab_name,
         report_date: reportMetadata.report_date,
-        metadata: reportMetadata, // Store the full metadata JSON (including risk and biomarkers)
+        metadata: reportMetadata, // Store the full metadata JSON (including risk, biomarkers, and doctor_name)
       })
       .eq('id', doc.id)
 
@@ -135,11 +143,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to store document chunks' }, { status: 500 })
     }
 
-    // 7. Create initial chat session
+    // 7. Create initial chat session scoped to current user
     const sessionTitle = file.name.replace(/\.(pdf|jpg|jpeg|png|webp)$/i, '')
     const { data: session, error: sessionError } = await supabase
       .from('chat_sessions')
-      .insert({ document_id: doc.id, title: sessionTitle })
+      .insert({ 
+        document_id: doc.id, 
+        title: sessionTitle,
+        user_id: user.id 
+      })
       .select()
       .single()
 

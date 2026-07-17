@@ -1,11 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { searchDocumentChunks, buildContext, persistMessages } from '@/lib/rag'
 import { streamHFResponse, ChatMessage } from '@/lib/hf'
+import { getAuthUser } from '@/lib/auth'
+import { createServerClient } from '@/lib/supabase/server'
 
 export const maxDuration = 60
 
 export async function POST(request: NextRequest) {
   try {
+    // Authenticate the user
+    const user = await getAuthUser(request)
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const body = await request.json()
     const { question, documentId, sessionId, history = [] } = body
 
@@ -14,6 +22,19 @@ export async function POST(request: NextRequest) {
         { error: 'question, documentId, and sessionId are required' },
         { status: 400 }
       )
+    }
+
+    // Verify document ownership
+    const supabase = createServerClient()
+    const { data: docData, error: docError } = await supabase
+      .from('documents')
+      .select('id')
+      .eq('id', documentId)
+      .eq('user_id', user.id)
+      .single()
+
+    if (docError || !docData) {
+      return NextResponse.json({ error: 'Forbidden or document not found' }, { status: 403 })
     }
 
     // 1. Similarity search — retrieve relevant chunks from the document

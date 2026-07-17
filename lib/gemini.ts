@@ -48,6 +48,7 @@ export interface ChatMessage {
 export interface ExtractedReportMetadata {
   lab_name: string | null
   report_date: string | null
+  doctor_name: string | null
   risk_score: number // 0-100
   risk_label: string
   biomarkers: Array<{
@@ -117,9 +118,10 @@ Analyze the following raw medical report text and extract structured information
 Return a JSON object with the exact keys:
 1. "lab_name": string or null (e.g. "Quest Diagnostics", "Labcorp", etc.)
 2. "report_date": string or null (format YYYY-MM-DD)
-3. "risk_score": integer between 0 and 100 representing general risk or level of out-of-range biomarkers (0=all normal, 100=critical)
-4. "risk_label": a short summary phrase (e.g., "Low probability of acute concern", "Several borderline levels", "Action recommended for elevated markers")
-5. "biomarkers": an array of up to 6 key indicators/lab tests found in the report, each having:
+3. "doctor_name": string or null representing the ordering/prescribing doctor or physician mentioned in the report (e.g. "Dr. Sarah Jenkins")
+4. "risk_score": integer between 0 and 100 representing general risk or level of out-of-range biomarkers (0=all normal, 100=critical)
+5. "risk_label": a short summary phrase (e.g., "Low probability of acute concern", "Several borderline levels", "Action recommended for elevated markers")
+6. "biomarkers": an array of up to 6 key indicators/lab tests found in the report, each having:
    - "label": string (e.g. "Total Cholesterol", "Hemoglobin A1c", "TSH", "Glucose")
    - "value": string (value with unit, e.g. "215 mg/dL", "5.8%")
    - "status": one of ["normal", "borderline", "high"] based on standard reference ranges or flags in the report.
@@ -149,6 +151,7 @@ Return ONLY a valid JSON block starting with { and ending with }. Do not include
     return {
       lab_name: null,
       report_date: null,
+      doctor_name: null,
       risk_score: 10,
       risk_label: 'Low probability of acute concern',
       biomarkers: [],

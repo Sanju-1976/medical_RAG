@@ -46,6 +46,7 @@ create index document_chunks_embedding_idx
 -- Chat sessions
 create table chat_sessions (
   id            uuid primary key default gen_random_uuid(),
+  user_id       uuid,
   document_id   uuid references documents(id) on delete cascade,
   title         text,
   created_at    timestamptz default now()

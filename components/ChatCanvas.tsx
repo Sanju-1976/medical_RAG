@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Bot, FileText, Sparkles } from 'lucide-react'
 import { MessageBubble } from '@/components/MessageBubble'
 import { InputBar } from '@/components/InputBar'
+import { createBrowserClient } from '@/lib/supabase/client'
 
 interface Message {
   id: string
@@ -28,6 +29,7 @@ export function ChatCanvas({
   onUploadClick,
   isNewSession,
 }: ChatCanvasProps) {
+  const supabase = createBrowserClient()
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
@@ -36,13 +38,22 @@ export function ChatCanvas({
   // Load message history on mount
   useEffect(() => {
     if (!sessionId || isNewSession) return
-    fetch(`/api/sessions/${sessionId}/messages`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (Array.isArray(data)) setMessages(data)
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) return
+
+      fetch(`/api/sessions/${sessionId}/messages`, {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
       })
-      .catch(console.error)
-  }, [sessionId, isNewSession])
+        .then((r) => r.json())
+        .then((data) => {
+          if (Array.isArray(data)) setMessages(data)
+        })
+        .catch(console.error)
+    })
+  }, [sessionId, isNewSession, supabase.auth])
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -62,6 +73,9 @@ export function ChatCanvas({
     setStreamingContent('')
 
     try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) throw new Error('Unauthenticated')
+
       const history = messages.slice(-10).map((m) => ({
         role: m.role,
         content: m.content,
@@ -69,7 +83,10 @@ export function ChatCanvas({
 
       const res = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
         body: JSON.stringify({ question, documentId, sessionId, history }),
       })
 

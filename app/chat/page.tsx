@@ -4,7 +4,9 @@ import { useState, useEffect } from 'react'
 import { Sidebar } from '@/components/Sidebar'
 import { DocumentOverview } from '@/components/DocumentOverview'
 import { UploadModal } from '@/components/UploadModal'
-import { Bot, ShieldCheck, User, Upload, Menu } from 'lucide-react'
+import { createBrowserClient } from '@/lib/supabase/client'
+import { useRouter } from 'next/navigation'
+import { Bot, ShieldCheck, User, Upload, Menu, LogOut } from 'lucide-react'
 
 interface Session {
   id: string
@@ -14,15 +16,37 @@ interface Session {
 }
 
 export default function ChatHomePage() {
+  const router = useRouter()
+  const supabase = createBrowserClient()
   const [sessions, setSessions] = useState<Session[]>([])
   const [showUpload, setShowUpload] = useState(false)
+  const [userEmail, setUserEmail] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch('/api/sessions')
-      .then((r) => r.json())
-      .then((data) => Array.isArray(data) && setSessions(data))
-      .catch(console.error)
-  }, [])
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) {
+        router.push('/login')
+        return
+      }
+
+      setUserEmail(session.user.email ?? 'User')
+
+      // Fetch sessions with auth header
+      fetch('/api/sessions', {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      })
+        .then((r) => r.json())
+        .then((data) => Array.isArray(data) && setSessions(data))
+        .catch(console.error)
+    })
+  }, [router, supabase.auth])
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut()
+    router.push('/login')
+  }
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -45,10 +69,22 @@ export default function ChatHomePage() {
                 HIPAA Compliant
               </span>
             </div>
-            <div className="flex items-center gap-2 cursor-pointer hover:bg-gray-100 transition-colors p-1.5 rounded-xl pr-3">
-              <User size={18} className="text-[#00478d]" />
-              <span className="hidden sm:inline text-sm font-medium">Dr. James Wilson</span>
-            </div>
+            
+            {userEmail && (
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl text-slate-700">
+                  <User size={14} className="text-[#00478d]" />
+                  <span className="text-xs font-semibold">{userEmail}</span>
+                </div>
+                <button
+                  onClick={handleSignOut}
+                  className="p-1.5 hover:bg-red-50 hover:text-red-600 text-slate-400 rounded-xl transition-all"
+                  title="Sign Out"
+                >
+                  <LogOut size={16} />
+                </button>
+              </div>
+            )}
           </div>
         </header>
 
