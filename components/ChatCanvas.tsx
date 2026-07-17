@@ -33,6 +33,8 @@ export function ChatCanvas({
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
+  
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   // Load message history on mount
@@ -55,10 +57,19 @@ export function ChatCanvas({
     })
   }, [sessionId, isNewSession, supabase.auth])
 
-  // Auto-scroll to bottom
+  // Smooth scroll for new messages added to history
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, streamingContent])
+    if (messages.length > 0) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [messages])
+
+  // Instant scroll during token streaming (prevents competing smooth-scroll animations and jitter)
+  useEffect(() => {
+    if (streamingContent && scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight
+    }
+  }, [streamingContent])
 
   const sendMessage = async (question: string) => {
     if (isLoading) return
@@ -152,7 +163,10 @@ export function ChatCanvas({
       )}
 
       {/* Messages Scroll Area */}
-      <div className="flex-1 overflow-y-auto pt-16 px-6 pb-6 scroll-smooth">
+      <div 
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto pt-16 px-6 pb-6 scroll-smooth"
+      >
         <div className="max-w-[768px] mx-auto flex flex-col gap-6">
 
           {/* Date separator */}
