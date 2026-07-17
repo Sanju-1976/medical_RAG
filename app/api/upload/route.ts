@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { extractPdfText, extractImageText, chunkText } from '@/lib/pdf'
 import { embedBatch } from '@/lib/embeddings'
+import { extractReportMetadata } from '@/lib/gemini'
 
 export const maxDuration = 60
 
@@ -92,6 +93,23 @@ export async function POST(request: NextRequest) {
           { status: 422 }
         )
       }
+    }
+
+    // 3.5 Extract metadata (lab name, report date, biomarkers, risk assessment) from rawText using Groq
+    const reportMetadata = await extractReportMetadata(rawText)
+    
+    // Update the document row with the extracted metadata
+    const { error: updateError } = await supabase
+      .from('documents')
+      .update({
+        lab_name: reportMetadata.lab_name,
+        report_date: reportMetadata.report_date,
+        metadata: reportMetadata, // Store the full metadata JSON (including risk and biomarkers)
+      })
+      .eq('id', doc.id)
+
+    if (updateError) {
+      console.error('Failed to update document metadata:', updateError)
     }
 
     // 4. Chunk the text

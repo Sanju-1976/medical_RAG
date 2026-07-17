@@ -16,6 +16,8 @@ interface DocumentOverviewProps {
     name: string
     file_size?: number
     lab_name?: string
+    report_date?: string
+    metadata?: any
   }
 }
 
@@ -26,6 +28,40 @@ const REFERENCES = [
 ]
 
 export function DocumentOverview({ document }: DocumentOverviewProps) {
+  // Extract metadata dynamically if present, otherwise fallback to defaults
+  const meta = document?.metadata || {}
+  const riskScore = typeof meta.risk_score === 'number' ? meta.risk_score : 15
+  const riskLabel = meta.risk_label || 'Low probability of acute concern'
+  
+  const biomarkers = Array.isArray(meta.biomarkers) && meta.biomarkers.length > 0
+    ? meta.biomarkers
+    : [
+        { label: 'Total Cholesterol', value: '215 mg/dL', status: 'borderline' as const },
+        { label: 'LDL (Bad)', value: '142 mg/dL', status: 'high' as const },
+        { label: 'HDL (Good)', value: '58 mg/dL', status: 'normal' as const },
+        { label: 'Triglycerides', value: '145 mg/dL', status: 'normal' as const }
+      ]
+
+  // Compute overall status based on biomarker conditions
+  let reportStatus = 'Normal'
+  let statusColor = 'bg-green-500'
+  if (biomarkers.some((b: any) => b.status === 'high')) {
+    reportStatus = 'Flagged Values'
+    statusColor = 'bg-red-500'
+  } else if (biomarkers.some((b: any) => b.status === 'borderline')) {
+    reportStatus = 'Borderline'
+    statusColor = 'bg-amber-500'
+  }
+
+  // Format report date if present
+  const reportDateFormatted = document?.report_date
+    ? new Date(document.report_date).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      })
+    : null
+
   return (
     <aside className="hidden xl:flex flex-col w-96 h-full bg-white border-l border-gray-200 p-6 gap-6 overflow-y-auto flex-shrink-0">
       <h3 className="font-semibold text-gray-900 text-base">Document Overview</h3>
@@ -40,11 +76,12 @@ export function DocumentOverview({ document }: DocumentOverviewProps) {
                   <FileText size={20} className="text-[#00478d]" />
                 </div>
                 <div>
-                  <p className="font-medium text-gray-900 text-sm truncate max-w-[160px]">
+                  <p className="font-medium text-gray-900 text-sm truncate max-w-[160px]" title={document.name}>
                     {document.name}
                   </p>
                   <p className="text-[10px] text-gray-400 uppercase tracking-wider mt-0.5">
-                    Blood Work{document.file_size ? ` · ${formatFileSize(document.file_size)}` : ''}
+                    {reportDateFormatted || 'Medical Report'}
+                    {document.file_size ? ` · ${formatFileSize(document.file_size)}` : ''}
                   </p>
                 </div>
               </div>
@@ -57,7 +94,7 @@ export function DocumentOverview({ document }: DocumentOverviewProps) {
             <div className="h-36 w-full bg-gradient-to-br from-[#00478d]/5 to-[#006a61]/5 rounded-xl overflow-hidden flex items-center justify-center border border-dashed border-gray-200">
               <div className="text-center text-gray-400">
                 <FileText size={32} className="mx-auto mb-2 opacity-30" />
-                <p className="text-xs">PDF Preview</p>
+                <p className="text-xs">Medical Document Uploaded</p>
               </div>
             </div>
           </div>
@@ -67,13 +104,15 @@ export function DocumentOverview({ document }: DocumentOverviewProps) {
             <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
               <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-2">Status</p>
               <div className="flex items-center gap-1.5">
-                <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                <span className="text-sm font-medium text-gray-700">Flagged Values</span>
+                <div className={`w-2 h-2 rounded-full ${statusColor} animate-pulse`} />
+                <span className="text-sm font-medium text-gray-700">{reportStatus}</span>
               </div>
             </div>
             <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100">
               <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-2">Lab</p>
-              <p className="text-sm font-medium text-gray-700">{document.lab_name ?? 'City Diagnostics'}</p>
+              <p className="text-sm font-medium text-gray-700 truncate" title={document.lab_name || 'City Diagnostics'}>
+                {document.lab_name || 'City Diagnostics'}
+              </p>
             </div>
             <div className="bg-gray-50 p-4 rounded-2xl col-span-2 border border-gray-100">
               <div className="flex items-center gap-2 mb-2">
@@ -83,10 +122,13 @@ export function DocumentOverview({ document }: DocumentOverviewProps) {
                 </p>
               </div>
               <div className="w-full bg-gray-200 h-1.5 rounded-full mt-1">
-                <div className="bg-[#006a61] h-full rounded-full w-[15%] transition-all duration-1000" />
+                <div 
+                  className="bg-[#006a61] h-full rounded-full transition-all duration-1000" 
+                  style={{ width: `${riskScore}%` }}
+                />
               </div>
               <p className="text-[10px] font-semibold text-[#006a61] mt-1.5 uppercase tracking-wider">
-                Low probability of acute concern
+                {riskLabel}
               </p>
             </div>
           </div>
@@ -97,10 +139,14 @@ export function DocumentOverview({ document }: DocumentOverviewProps) {
               <FlaskConical size={12} />
               Key Indicators
             </h4>
-            <IndicatorRow label="Total Cholesterol" value="215 mg/dL" status="borderline" />
-            <IndicatorRow label="LDL (Bad)" value="142 mg/dL" status="high" />
-            <IndicatorRow label="HDL (Good)" value="58 mg/dL" status="normal" />
-            <IndicatorRow label="Triglycerides" value="145 mg/dL" status="normal" />
+            {biomarkers.map((bio: any, idx: number) => (
+              <IndicatorRow 
+                key={idx}
+                label={bio.label} 
+                value={bio.value} 
+                status={bio.status} 
+              />
+            ))}
           </div>
         </>
       ) : (
@@ -153,15 +199,15 @@ function IndicatorRow({
     borderline: { color: 'bg-amber-100 text-amber-700', label: 'Borderline', icon: true },
     high: { color: 'bg-red-100 text-red-700', label: 'Elevated', icon: true },
   }
-  const c = config[status]
+  const c = config[status] || config.normal
 
   return (
     <div className="flex items-center justify-between bg-gray-50 rounded-xl p-3 border border-gray-100">
-      <div>
-        <p className="text-[10px] text-gray-400 uppercase tracking-wider">{label}</p>
+      <div className="min-w-0 flex-1 mr-2">
+        <p className="text-[10px] text-gray-400 uppercase tracking-wider truncate">{label}</p>
         <p className="font-mono font-semibold text-gray-900 text-sm mt-0.5">{value}</p>
       </div>
-      <span className={`text-[10px] font-semibold px-2 py-1 rounded-lg flex items-center gap-1 ${c.color}`}>
+      <span className={`text-[10px] font-semibold px-2 py-1 rounded-lg flex items-center gap-1 flex-shrink-0 ${c.color}`}>
         {c.icon && <AlertTriangle size={10} />}
         {c.label}
       </span>

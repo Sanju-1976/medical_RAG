@@ -21,6 +21,7 @@ create table documents (
   file_size     bigint,
   lab_name      text,
   report_date   date,
+  metadata      jsonb,
   created_at    timestamptz default now()
 );
 

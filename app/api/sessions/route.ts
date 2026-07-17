@@ -10,7 +10,7 @@ export async function GET() {
       id,
       title,
       created_at,
-      document:documents(id, name, file_size)
+      document:documents(id, name, file_size, lab_name, report_date, metadata)
     `)
     .order('created_at', { ascending: false })
     .limit(20)
